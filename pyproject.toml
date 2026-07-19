@@ -1,0 +1,27 @@
+[project]
+name = "redcell"
+version = "0.0.1"
+description = "Turn real vulnerabilities into playable CTF challenges."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "openai>=1.0",
+    "typer>=0.12",
+    "rich>=13.0",
+    "python-dotenv>=1.0",
+    "pydantic>=2.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.5"]
+
+[project.scripts]
+redcell = "redcell.cli:app"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["redcell*"]
