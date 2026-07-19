@@ -5,6 +5,7 @@ from rich.console import Console
 from rich.table import Table
 
 from redcell.ingest import Store, ingest as run_ingest
+from redcell.scan import scan as run_scan
 
 app = typer.Typer(help="Turn real vulnerabilities into playable CTF challenges.")
 console = Console()
@@ -62,9 +63,34 @@ def symbols(name: str, db: str = DEFAULT_DB):
 
 # --- later-stage stubs ---------------------------------------------------
 @app.command()
-def scan(path: str):
-    """Scan an ingested repo for vulnerabilities. (stub)"""
-    typer.echo(f"[stub] scanning {path}")
+def scan(src: str, db: str = DEFAULT_DB, out: str = "findings.json",
+         no_llm: bool = typer.Option(False, "--no-llm", help="Skip LLM, use heuristic only")):
+    """Scan a repo (local path or git URL) for vulnerabilities -> findings.json."""
+    console.print(f"[bold]Scanning[/bold] {src}")
+    report = run_scan(src, db_path=db, out_path=out, use_llm=not no_llm)
+
+    summary = Table(title="Scan summary", show_header=False)
+    for k in ("files_parsed", "candidates", "findings", "engine",
+              "llm_calls", "cost_usd", "elapsed_s"):
+        summary.add_row(k, str(getattr(report, k)))
+    console.print(summary)
+
+    if report.findings_list:
+        t = Table(title=f"Findings ({report.findings})")
+        t.add_column("score", justify="right")
+        t.add_column("threat")
+        t.add_column("location")
+        t.add_column("flow")
+        t.add_column("why", overflow="fold", max_width=44)
+        for f in report.findings_list:
+            flow = "cross-file" if f.cross_file else "same-file"
+            t.add_row(f"{f.score:.2f}", f.threat, f"{f.file}:{f.line}", flow, f.why)
+        console.print(t)
+    else:
+        console.print("[yellow]No findings.[/yellow]")
+
+    console.print(f"[green]Wrote {out} ({report.engine} engine, "
+                  f"${report.cost_usd})[/green]")
 
 
 @app.command()

@@ -138,3 +138,23 @@ class Store:
             " ORDER BY f.path, c.line",
             (callee,),
         ).fetchall()
+
+    def all_calls(self) -> list[sqlite3.Row]:
+        """Every call edge with its file path (for sink matching)."""
+        return self.conn.execute(
+            "SELECT c.caller, c.callee, c.callee_full, c.line, f.path AS file_path"
+            " FROM calls c JOIN files f ON f.id=c.file_id"
+        ).fetchall()
+
+    def get_symbol_span(self, file_path: str, qualname: str):
+        """Return (start_line, end_line) for a function/method, or None."""
+        row = self.conn.execute(
+            "SELECT s.start_line, s.end_line FROM symbols s JOIN files f ON f.id=s.file_id"
+            " WHERE f.path=? AND s.qualname=? LIMIT 1",
+            (file_path, qualname),
+        ).fetchone()
+        return (row["start_line"], row["end_line"]) if row else None
+
+    def repo_root(self) -> str | None:
+        row = self.conn.execute("SELECT root FROM repos ORDER BY id LIMIT 1").fetchone()
+        return row["root"] if row else None
