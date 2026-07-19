@@ -6,6 +6,12 @@
 challenges/*
 !challenges/.gitkeep
 
+# redcell working dir (index db + cloned repo cache)
+.redcell/
+
+# Scan output
+findings.json
+
 # Python
 __pycache__/
 *.py[cod]
