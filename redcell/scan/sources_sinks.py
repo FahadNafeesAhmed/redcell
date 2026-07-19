@@ -13,11 +13,21 @@ import re
 # --- SOURCES: untrusted input entering the program ----------------------
 # Matched against a function's source text.
 SOURCE_PATTERNS: list[tuple[str, str]] = [
+    # Flask / FastAPI / generic request objects
     (r"request\.(json|args|form|values|data|files|cookies|headers|get_json|stream)",
      "http_request"),
+    # Django / DRF request attributes
+    (r"request\.(GET|POST|PUT|DELETE|body|query_params|FILES|COOKIES|META)",
+     "http_request"),
     (r"\bflask\.request\b", "http_request"),
+    # Route/view decorators (params are untrusted)
     (r"@(app|router|blueprint|bp|api)\.(route|get|post|put|delete|patch|websocket)",
      "http_endpoint"),
+    # Raw stdlib http.server / WSGI style input
+    (r"\bparse_qs\b", "http_request"),
+    (r"\bself\.(path|rfile)\b", "http_request"),
+    (r"\benviron\[['\"](QUERY_STRING|PATH_INFO|wsgi\.input)", "http_request"),
+    # Other untrusted entry points
     (r"\binput\s*\(", "stdin"),
     (r"\bsys\.argv\b", "cli_args"),
     (r"\bos\.environ\b", "environment"),
