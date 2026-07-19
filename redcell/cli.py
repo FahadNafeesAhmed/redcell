@@ -76,16 +76,18 @@ def scan(src: str, db: str = DEFAULT_DB, out: str = "findings.json",
     console.print(summary)
 
     if report.findings_list:
-        t = Table(title=f"Findings ({report.findings})")
-        t.add_column("score", justify="right")
-        t.add_column("threat")
-        t.add_column("location")
-        t.add_column("flow")
-        t.add_column("why", overflow="fold", max_width=44)
-        for f in report.findings_list:
+        console.print(f"\n[bold]Findings ({report.findings})[/bold]")
+        for i, f in enumerate(report.findings_list, 1):
             flow = "cross-file" if f.cross_file else "same-file"
-            t.add_row(f"{f.score:.2f}", f.threat, f"{f.file}:{f.line}", flow, f.why)
-        console.print(t)
+            console.print(
+                f"\n[bold cyan]{i}.[/bold cyan] [bold]{f.threat}[/bold] "
+                f"[dim](score {f.score:.2f}, {flow}, {f.confirmed_by})[/dim]"
+            )
+            console.print(f"   [bold]where:[/bold] {f.file}:{f.line}  ([dim]{f.sink_label}[/dim])")
+            console.print(f"   [bold]source:[/bold] {f.source_kind} in {f.source_file}")
+            if f.cross_file and f.path:
+                console.print(f"   [bold]flow:[/bold]  {' <- '.join(f.path)}")
+            console.print(f"   [bold]why:[/bold]   {f.why}")
     else:
         console.print("[yellow]No findings.[/yellow]")
 
