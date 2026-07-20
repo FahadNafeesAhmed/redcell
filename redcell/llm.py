@@ -42,6 +42,16 @@ class LLM:
         except Exception:
             pass
 
+    def chat(self, messages: list, *, model: str, tools: list | None = None):
+        """Raw multi-turn chat with optional tool-use. Returns the message object."""
+        kwargs = {"model": model, "messages": messages, "temperature": 0}
+        if tools:
+            kwargs["tools"] = tools
+            kwargs["tool_choice"] = "auto"
+        resp = self._client.chat.completions.create(**kwargs)
+        self._account(model, getattr(resp, "usage", None))
+        return resp.choices[0].message
+
     def complete_json(self, prompt: str, *, model: str) -> dict:
         """Ask the model for a JSON object. Returns {} on parse failure."""
         resp = self._client.chat.completions.create(

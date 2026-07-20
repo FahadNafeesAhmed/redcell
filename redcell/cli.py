@@ -15,6 +15,7 @@ from redcell.ingest import Store, ingest as run_ingest
 from redcell.scan import scan as run_scan
 from redcell.generator import generate as run_generate
 from redcell import sandbox as sbx
+from redcell.verifier import verify as run_verify
 
 app = typer.Typer(help="Turn real vulnerabilities into playable CTF challenges.")
 console = Console()
@@ -133,9 +134,20 @@ def gen(findings: str = "findings.json", index: int = 0,
 
 
 @app.command()
-def verify(challenge_id: str):
-    """Have the agent attempt to solve a challenge. (stub)"""
-    typer.echo(f"[stub] verifying challenge {challenge_id}")
+def verify(challenge_dir: str, no_llm: bool = typer.Option(False, "--no-llm")):
+    """Launch a challenge and have the agent autonomously solve it."""
+    run = sbx.launch(challenge_dir)
+    console.print(f"Challenge live at {run.base_url}")
+    try:
+        verdict = run_verify(challenge_dir, run.base_url, llm=None if no_llm else "auto")
+        console.print(f"engine={verdict.engine} turns={verdict.turns} "
+                      f"cost=${verdict.cost_usd}")
+        if verdict.solved and verdict.flag_found == run.flag:
+            console.print(f"[bold green]SOLVED[/bold green] {verdict.flag_found}")
+        else:
+            console.print(f"[bold red]NOT SOLVED[/bold red] got {verdict.flag_found}")
+    finally:
+        run.stop()
 
 
 @app.command()
@@ -187,26 +199,31 @@ def demo(src: str = typer.Argument("tests/vuln_repo"), index: int = -1,
     console.print(f"  app live at [bold]{run.base_url}[/bold] (pid {run.proc.pid})")
 
     try:
-        # Stage 4b: exploit
+        # Stage 4b: verifier agent autonomously solves it
         console.print("\n" + rule)
-        console.print("[bold cyan]STAGE 4b  EXPLOIT[/bold cyan]  attacking the app")
+        console.print("[bold cyan]STAGE 4b  VERIFY[/bold cyan]  agent autonomously attacking")
         console.print(rule)
-        res = subprocess.run(
-            [sys.executable, str(Path(ch.directory) / "exploit.py"), run.base_url],
-            capture_output=True, text=True, timeout=30,
-        )
-        console.print("[dim]" + res.stdout.strip() + "[/dim]")
-        captured = re.search(r"FLAG\{[^}]+\}", res.stdout)
+        llm = None if no_llm else "auto"
+        verdict = run_verify(ch.directory, run.base_url, llm=llm)
+        console.print(f"  engine: [bold]{verdict.engine}[/bold]  "
+                      f"turns: {verdict.turns}  llm_calls: {verdict.llm_calls}  "
+                      f"cost: ${verdict.cost_usd}")
+        for i, step in enumerate(verdict.transcript, 1):
+            if "action" in step:
+                a = step["action"]
+                console.print(f"   [dim]attempt {i}:[/dim] {a.get('method','?')} "
+                              f"{a.get('path','?')} {a.get('body','') or ''}")
+                console.print(f"   [dim]  -> {step['result']['body'][:100]}[/dim]")
 
         # verdict
         console.print("\n" + rule)
-        ok = captured and captured.group(0) == run.flag
-        if ok:
-            console.print(f"[bold green]SOLVED[/bold green]  captured {captured.group(0)} "
-                          f"== expected flag. Vulnerability proven exploitable.")
+        if verdict.solved and verdict.flag_found == run.flag:
+            console.print(f"[bold green]SOLVED[/bold green]  agent captured "
+                          f"{verdict.flag_found} == expected flag. "
+                          f"Vulnerability proven exploitable.")
         else:
             console.print(f"[bold red]NOT SOLVED[/bold red]  expected {run.flag}, "
-                          f"got {captured.group(0) if captured else '(none)'}")
+                          f"got {verdict.flag_found or '(none)'}")
         console.print(rule)
     finally:
         run.stop()
