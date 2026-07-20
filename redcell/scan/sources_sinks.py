@@ -19,6 +19,9 @@ SOURCE_PATTERNS: list[tuple[str, str]] = [
     # Django / DRF request attributes
     (r"request\.(GET|POST|PUT|DELETE|body|query_params|FILES|COOKIES|META)",
      "http_request"),
+    # aiohttp request methods and route/query parameters
+    (r"request\.(post|read|text|json|multipart|match_info|query|rel_url)",
+     "http_request"),
     (r"\bflask\.request\b", "http_request"),
     # Route/view decorators (params are untrusted)
     (r"@(app|router|blueprint|bp|api)\.(route|get|post|put|delete|patch|websocket)",
@@ -43,6 +46,8 @@ SINK_PATTERNS: list[tuple[str, str, str]] = [
     ("completions.create", "prompt_injection", "OpenAI completion"),
     ("responses.create", "prompt_injection", "OpenAI responses API"),
     ("messages.create", "prompt_injection", "Anthropic messages API"),
+    ("generate_content", "prompt_injection", "Gemini generate content"),
+    ("generateContent", "prompt_injection", "Gemini generate content"),
     ("ChatCompletion", "prompt_injection", "OpenAI ChatCompletion"),
     (".invoke", "prompt_injection", "LangChain invoke"),
     ("llm.", "prompt_injection", "LLM call"),

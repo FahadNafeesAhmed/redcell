@@ -52,3 +52,21 @@ def test_verdict_not_solved_on_honeypot_flag(monkeypatch):
     assert verdict.solved is False
     assert verdict.flag_found == "FLAG{honeypot}"
 
+
+def test_verifier_falls_back_when_optional_llm_fails(tmp_path):
+    class FailingLLM:
+        calls = 0
+        cost_usd = 0.0
+
+        def chat(self, *args, **kwargs):
+            raise RuntimeError("provider unavailable")
+
+    ch = generate(FINDINGS["prompt_injection"], out_dir=str(tmp_path), use_llm=False)
+    run = sbx.launch(ch.directory)
+    try:
+        verdict = verify(ch.directory, run.base_url, llm=FailingLLM())
+        assert verdict.engine == "builtin_fallback"
+        assert verdict.solved is True
+        assert verdict.flag_found == ch.flag
+    finally:
+        run.stop()

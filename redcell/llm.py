@@ -1,8 +1,9 @@
-"""Thin OpenAI wrapper — the ONLY file that imports `openai`.
+"""Optional LLM provider adapter.
 
-Degrades gracefully: if there's no OPENAI_API_KEY (or the SDK isn't installed),
-`get_llm()` returns None and callers fall back to a deterministic heuristic, so
-the pipeline always completes offline.
+The core Redcell pipeline is offline-first. If no supported provider is
+configured, ``get_llm()`` returns ``None`` and callers use deterministic
+heuristics and payloads instead. The OpenAI SDK is the only external SDK used
+here; Gemini is supported through its OpenAI-compatible endpoint.
 """
 
 from __future__ import annotations
@@ -18,13 +19,16 @@ try:
 except Exception:
     pass
 
-MODEL_STRONG = os.getenv("REDCELL_MODEL_STRONG", "gpt-4o")
-MODEL_CHEAP = os.getenv("REDCELL_MODEL_CHEAP", "gpt-4o-mini")
+# These defaults are used only when a provider key is deliberately configured.
+MODEL_STRONG = os.getenv("REDCELL_MODEL_STRONG", "gpt-5.3-codex")
+MODEL_CHEAP = os.getenv("REDCELL_MODEL_CHEAP", "gpt-5.6-luna")
+GEMINI_OPENAI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 # Rough USD per 1M tokens, for the live cost meter (override as needed).
 _PRICES = {
-    "gpt-4o": (2.50, 10.0),
-    "gpt-4o-mini": (0.15, 0.60),
+    "gpt-5.3-codex": (1.75, 14.0),
+    "gpt-5.6-luna": (1.0, 6.0),
+    "gemini-2.5-flash-lite": (0.10, 0.40),
 }
 
 
@@ -71,14 +75,28 @@ class LLM:
 
 
 def get_llm() -> LLM | None:
-    """Return an LLM if a key + SDK are available, else None."""
-    if not os.getenv("OPENAI_API_KEY"):
+    """Return the configured LLM provider, or None for offline mode.
+
+    Set REDCELL_LLM_PROVIDER to ``openai`` or ``gemini`` to opt in. Any other
+    value, including ``offline``, deliberately disables remote model calls.
+    """
+    provider = os.getenv("REDCELL_LLM_PROVIDER", "offline").strip().lower()
+    if provider == "gemini":
+        api_key = os.getenv("GEMINI_API_KEY")
+        client_kwargs = {"api_key": api_key, "base_url": GEMINI_OPENAI_BASE_URL}
+    elif provider == "openai":
+        api_key = os.getenv("OPENAI_API_KEY")
+        client_kwargs = {"api_key": api_key}
+    else:
+        return None
+
+    if not api_key:
         return None
     try:
         from openai import OpenAI
     except Exception:
         return None
     try:
-        return LLM(OpenAI())
+        return LLM(OpenAI(**client_kwargs))
     except Exception:
         return None

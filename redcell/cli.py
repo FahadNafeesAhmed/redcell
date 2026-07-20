@@ -6,10 +6,7 @@ from rich.table import Table
 
 import json
 from pathlib import Path
-
-import re
-import subprocess
-import sys
+import time
 
 from redcell.ingest import Store, ingest as run_ingest
 from redcell.scan import scan as run_scan
@@ -71,7 +68,6 @@ def symbols(name: str, db: str = DEFAULT_DB):
         console.print(f"  {r['caller']}  [dim]{r['file_path']}:{r['line']}[/dim]")
 
 
-# --- later-stage stubs ---------------------------------------------------
 @app.command()
 def scan(src: str, db: str = DEFAULT_DB, out: str = "findings.json",
          no_llm: bool = typer.Option(False, "--no-llm", help="Skip LLM, use heuristic only")):
@@ -150,10 +146,33 @@ def verify(challenge_dir: str, no_llm: bool = typer.Option(False, "--no-llm")):
         run.stop()
 
 
+def _resolve_challenge_dir(reference: str) -> Path:
+    """Resolve a challenge directory or an id under the default output folder."""
+    direct = Path(reference)
+    candidates = [direct, Path("challenges") / reference]
+    for directory in candidates:
+        if (directory / "meta.json").is_file():
+            return directory
+    raise typer.BadParameter(
+        f"No challenge metadata found for '{reference}'. Pass a challenge directory "
+        "or an id under challenges/.")
+
+
 @app.command()
-def play(challenge_id: str):
-    """Launch a challenge for a human to solve. (stub)"""
-    typer.echo(f"[stub] launching challenge {challenge_id}")
+def play(challenge: str):
+    """Launch a generated challenge for a human player; stop with Ctrl+C."""
+    directory = _resolve_challenge_dir(challenge)
+    run = sbx.launch(str(directory))
+    console.print(f"[green]Challenge live:[/green] {run.base_url}")
+    console.print(f"[dim]Read {directory / 'challenge.md'} for the briefing.[/dim]")
+    console.print("[yellow]Press Ctrl+C when the player is finished.[/yellow]")
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        console.print("\nStopping challenge.")
+    finally:
+        run.stop()
 
 
 @app.command()

@@ -44,23 +44,31 @@ def confirm(cand: Candidate, root: str | Path, llm: LLM | None) -> dict:
     """Return {exploitable, confidence, why, confirmed_by}."""
     root = Path(root)
 
-    if llm is None:
-        # Heuristic: candidate already has a real source->sink chain.
+    def heuristic(reason: str) -> dict:
+        # A candidate already has a concrete source-to-sink reachability path.
         conf = 0.8 if not cand.cross_file else 0.65
         return {
             "exploitable": True,
             "confidence": conf,
             "why": (f"Untrusted {cand.source_kind} input reaches {cand.sink_label} "
                     f"via {len(cand.path)} hop(s); no sanitization detected "
-                    f"(heuristic, no LLM key set)."),
-            "confirmed_by": "heuristic",
+                    f"({reason})."),
+            "confirmed_by": "heuristic" if llm is None else "heuristic_fallback",
         }
+
+    if llm is None:
+        return heuristic("heuristic, no LLM configured")
 
     prompt = _PROMPT.format(
         source_kind=cand.source_kind, sink_label=cand.sink_label,
         threat=cand.threat, slices=_gather_slices(cand, root),
     )
-    res = llm.complete_json(prompt, model=MODEL_STRONG)
+    try:
+        res = llm.complete_json(prompt, model=MODEL_STRONG)
+    except Exception:
+        return heuristic("LLM confirmation unavailable; deterministic fallback")
+    if not res:
+        return heuristic("LLM returned no valid JSON; deterministic fallback")
     return {
         "exploitable": bool(res.get("exploitable", False)),
         "confidence": float(res.get("confidence", 0.0) or 0.0),

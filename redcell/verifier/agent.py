@@ -95,4 +95,11 @@ def verify(challenge_dir: str, base_url: str, llm: LLM | None = "auto") -> Verdi
         return _builtin_solve(threat, base_url, expected)
 
     challenge_md = (directory / "challenge.md").read_text(encoding="utf-8")
-    return _llm_solve(challenge_md, base_url, expected, llm)
+    try:
+        return _llm_solve(challenge_md, base_url, expected, llm)
+    except Exception:
+        # A transient quota, network, or provider failure must not break a
+        # training run. The deterministic payload solver remains the fallback.
+        verdict = _builtin_solve(threat, base_url, expected)
+        verdict.engine = "builtin_fallback"
+        return verdict

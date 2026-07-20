@@ -80,9 +80,9 @@ def scan(src: str, db_path: str = ".redcell/index.db",
 
     store.close()
 
+    report.elapsed_s = round(time.perf_counter() - started, 3)
+
     # write findings.json
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     Path(out_path).write_text(json.dumps(report.to_dict(), indent=2), encoding="utf-8")
-
-    report.elapsed_s = round(time.perf_counter() - started, 3)
     return report
