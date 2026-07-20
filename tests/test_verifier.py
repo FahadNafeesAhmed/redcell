@@ -40,3 +40,15 @@ def test_verdict_not_solved_on_wrong_target(tmp_path):
     verdict = verify(ch.directory, "http://127.0.0.1:1", llm=None)
     assert verdict.solved is False
     assert verdict.flag_found is None
+
+
+def test_verdict_not_solved_on_honeypot_flag(monkeypatch):
+    """If the app returns a fake/honeypot flag, the agent must report NOT solved unless expected_flag matches."""
+    from redcell.verifier import agent
+    monkeypatch.setattr(agent, "payloads_for", lambda threat: [{"method": "GET", "path": "/test"}])
+    monkeypatch.setattr(agent, "execute_http", lambda base_url, method, path, body=None: {"status": 200, "body": "FLAG{honeypot}"})
+
+    verdict = agent._builtin_solve("prompt_injection", "http://fake.target", expected_flag="FLAG{real_secret}")
+    assert verdict.solved is False
+    assert verdict.flag_found == "FLAG{honeypot}"
+
