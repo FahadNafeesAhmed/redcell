@@ -4,8 +4,12 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+import json
+from pathlib import Path
+
 from redcell.ingest import Store, ingest as run_ingest
 from redcell.scan import scan as run_scan
+from redcell.generator import generate as run_generate
 
 app = typer.Typer(help="Turn real vulnerabilities into playable CTF challenges.")
 console = Console()
@@ -96,9 +100,31 @@ def scan(src: str, db: str = DEFAULT_DB, out: str = "findings.json",
 
 
 @app.command()
-def gen(finding_id: str):
-    """Generate a CTF challenge from a finding. (stub)"""
-    typer.echo(f"[stub] generating challenge for finding {finding_id}")
+def gen(findings: str = "findings.json", index: int = 0,
+        out: str = "challenges", no_llm: bool = typer.Option(False, "--no-llm")):
+    """Generate a playable CTF challenge from a finding in findings.json."""
+    data = json.loads(Path(findings).read_text(encoding="utf-8"))
+    items = data.get("findings", data) if isinstance(data, dict) else data
+    if not items:
+        console.print("[red]No findings to generate from.[/red]")
+        raise typer.Exit(1)
+    if index >= len(items):
+        console.print(f"[red]index {index} out of range (have {len(items)}).[/red]")
+        raise typer.Exit(1)
+
+    finding = items[index]
+    console.print(f"[bold]Generating challenge[/bold] from finding #{index}: "
+                  f"{finding.get('threat')} @ {finding.get('file')}:{finding.get('line')}")
+    ch = run_generate(finding, out_dir=out, use_llm=not no_llm)
+
+    console.print(f"\n[green]Created challenge:[/green] {ch.directory}")
+    console.print(f"  title:  {ch.story_title}")
+    console.print(f"  threat: {ch.threat}")
+    console.print(f"  flag:   {ch.flag}  [dim](synthetic)[/dim]")
+    console.print("  files:  challenge.md, meta.json, app/main.py, exploit.py")
+    console.print(f"\n[bold]Play it:[/bold]")
+    console.print(f"  cd {ch.directory} && pip install -r app/requirements.txt && python app/main.py")
+    console.print(f"  python {ch.directory}/exploit.py http://127.0.0.1:{ch.port}")
 
 
 @app.command()
