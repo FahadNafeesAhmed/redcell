@@ -7,9 +7,14 @@ from rich.table import Table
 import json
 from pathlib import Path
 
+import re
+import subprocess
+import sys
+
 from redcell.ingest import Store, ingest as run_ingest
 from redcell.scan import scan as run_scan
 from redcell.generator import generate as run_generate
+from redcell import sandbox as sbx
 
 app = typer.Typer(help="Turn real vulnerabilities into playable CTF challenges.")
 console = Console()
@@ -137,6 +142,75 @@ def verify(challenge_id: str):
 def play(challenge_id: str):
     """Launch a challenge for a human to solve. (stub)"""
     typer.echo(f"[stub] launching challenge {challenge_id}")
+
+
+@app.command()
+def demo(src: str = typer.Argument("tests/vuln_repo"), index: int = -1,
+         db: str = ".redcell/demo.db", out: str = "challenges",
+         no_llm: bool = typer.Option(False, "--no-llm")):
+    """Full pipeline live: scan -> generate -> sandbox -> exploit -> verify."""
+    rule = "[bold]" + "=" * 60 + "[/bold]"
+
+    # Stage 1-2: scan
+    console.print(rule)
+    console.print("[bold cyan]STAGE 1+2  SCAN[/bold cyan]  finding vulnerabilities")
+    console.print(rule)
+    report = run_scan(src, db_path=db, out_path="findings.json", use_llm=not no_llm)
+    console.print(f"  scanned {report.files_parsed} files -> "
+                  f"[bold]{report.findings} findings[/bold] ({report.engine} engine)")
+    if not report.findings_list:
+        console.print("[red]No findings to demo.[/red]")
+        raise typer.Exit(1)
+
+    # pick a finding: prefer prompt_injection, else highest score
+    picks = report.findings_list
+    if index >= 0:
+        finding = picks[index]
+    else:
+        pi = [f for f in picks if f.threat == "prompt_injection"]
+        finding = pi[0] if pi else picks[0]
+    console.print(f"  chosen: [bold]{finding.threat}[/bold] @ {finding.file}:{finding.line}")
+
+    # Stage 3a: generate
+    console.print("\n" + rule)
+    console.print("[bold cyan]STAGE 3  GENERATE[/bold cyan]  building a CTF challenge")
+    console.print(rule)
+    ch = run_generate(finding.to_dict(), out_dir=out, use_llm=not no_llm)
+    console.print(f"  '{ch.story_title}' -> {ch.directory}")
+    console.print(f"  flag (synthetic): [dim]{ch.flag}[/dim]")
+
+    # Stage 3b: sandbox launch
+    console.print("\n" + rule)
+    console.print("[bold cyan]STAGE 4a  SANDBOX[/bold cyan]  running the vulnerable app")
+    console.print(rule)
+    run = sbx.launch(ch.directory)
+    console.print(f"  app live at [bold]{run.base_url}[/bold] (pid {run.proc.pid})")
+
+    try:
+        # Stage 4b: exploit
+        console.print("\n" + rule)
+        console.print("[bold cyan]STAGE 4b  EXPLOIT[/bold cyan]  attacking the app")
+        console.print(rule)
+        res = subprocess.run(
+            [sys.executable, str(Path(ch.directory) / "exploit.py"), run.base_url],
+            capture_output=True, text=True, timeout=30,
+        )
+        console.print("[dim]" + res.stdout.strip() + "[/dim]")
+        captured = re.search(r"FLAG\{[^}]+\}", res.stdout)
+
+        # verdict
+        console.print("\n" + rule)
+        ok = captured and captured.group(0) == run.flag
+        if ok:
+            console.print(f"[bold green]SOLVED[/bold green]  captured {captured.group(0)} "
+                          f"== expected flag. Vulnerability proven exploitable.")
+        else:
+            console.print(f"[bold red]NOT SOLVED[/bold red]  expected {run.flag}, "
+                          f"got {captured.group(0) if captured else '(none)'}")
+        console.print(rule)
+    finally:
+        run.stop()
+        console.print("  sandbox torn down.")
 
 
 if __name__ == "__main__":
